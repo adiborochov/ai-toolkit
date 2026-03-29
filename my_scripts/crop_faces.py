@@ -136,27 +136,28 @@ def compute_crop_box(face_box, img_w, img_h):
 
 
 def crop_and_resize(img_path, box, output_path):
-    """Crop the image to `box`, resize to TARGET dimensions preserving aspect ratio."""
+    """Crop the image to `box`, center crop to exact aspect ratio, then resize."""
     img = Image.open(img_path).convert("RGB")
     left, top, right, bottom = box
     cropped = img.crop((left, top, right, bottom))
 
-    # Resize to target. Since we forced the aspect ratio, this should be clean.
-    # Use LANCZOS for high-quality downsampling.
-    crop_w = right - left
-    crop_h = bottom - top
+    # Center crop to exact target aspect ratio
+    crop_w, crop_h = cropped.size
     crop_ratio = crop_w / crop_h
 
-    if abs(crop_ratio - TARGET_RATIO) < 0.001:
-        # Aspect ratio matches, direct resize
-        result = cropped.resize((TARGET_W, TARGET_H), Image.LANCZOS)
-    else:
-        # Slight mismatch from clamping - fit inside target and pad
-        cropped.thumbnail((TARGET_W, TARGET_H), Image.LANCZOS)
-        result = Image.new("RGB", (TARGET_W, TARGET_H), (0, 0, 0))
-        paste_x = (TARGET_W - cropped.width) // 2
-        paste_y = (TARGET_H - cropped.height) // 2
-        result.paste(cropped, (paste_x, paste_y))
+    if crop_ratio > TARGET_RATIO:
+        # Too wide - crop width
+        new_w = int(crop_h * TARGET_RATIO)
+        offset = (crop_w - new_w) // 2
+        cropped = cropped.crop((offset, 0, offset + new_w, crop_h))
+    elif crop_ratio < TARGET_RATIO:
+        # Too tall - crop height
+        new_h = int(crop_w / TARGET_RATIO)
+        offset = (crop_h - new_h) // 2
+        cropped = cropped.crop((0, offset, crop_w, offset + new_h))
+
+    # Now resize to target dimensions (no stretching since aspect ratio matches)
+    result = cropped.resize((TARGET_W, TARGET_H), Image.LANCZOS)
 
     result.save(output_path, quality=95)
 
